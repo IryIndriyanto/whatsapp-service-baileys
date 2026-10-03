@@ -44,7 +44,11 @@ LOG_LEVEL=info
 curl -i http://localhost:3001/health
 ```
 
-Returns HTTP 200 when WhatsApp is connected and HTTP 503 otherwise.
+Returns HTTP 200 when WhatsApp is connected and HTTP 503 otherwise. The JSON reports connection state and whether a pairing QR is available.
+
+### Pairing QR
+
+`GET /pairing-qr` returns the current QR as a PNG, or HTTP 204 when no QR is needed. It is intended for the local shop-floor service UI.
 
 ### Send text
 
@@ -78,7 +82,7 @@ Images, videos, audio, and other content types are handled based on the response
 ## Notes
 
 - Baileys authentication is not compatible with the old `whatsapp-web.js` `LocalAuth` directory. A new QR scan is required.
-- Do not expose this service publicly without authentication. The initial API intentionally has no auth middleware.
+- Do not expose this service publicly without authentication. The HTTP server binds to `127.0.0.1` only, so it is reachable only from the same computer.
 - The service reconnects automatically unless WhatsApp explicitly logs the device out.
 - Remove `auth_info_baileys/` and restart to link a different WhatsApp account.
 

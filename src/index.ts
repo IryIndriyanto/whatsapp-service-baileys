@@ -8,7 +8,8 @@ import makeWASocket, {
 } from "@whiskeysockets/baileys";
 import type { WASocket } from "@whiskeysockets/baileys";
 import pino from "pino";
-import QRCode from "qrcode-terminal";
+import QRCode from "qrcode";
+import QRCodeTerminal from "qrcode-terminal";
 
 const app = express();
 app.use(bodyParser.json({ limit: "50mb" }));
@@ -21,6 +22,7 @@ const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
 let sock: WASocket | null = null;
 let connectionState: "connecting" | "open" | "closed" = "connecting";
 let reconnectTimer: NodeJS.Timeout | undefined;
+let pairingQr: string | null = null;
 let isShuttingDown = false;
 
 function getSocket(): WASocket {
@@ -55,11 +57,13 @@ async function startWhatsApp(): Promise<void> {
   nextSocket.ev.on("creds.update", saveCreds);
   nextSocket.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
     if (qr) {
+      pairingQr = qr;
       console.log("Scan this QR code with WhatsApp > Linked devices:");
-      QRCode.generate(qr, { small: true });
+      QRCodeTerminal.generate(qr, { small: true });
     }
 
     if (connection === "open") {
+      pairingQr = null;
       connectionState = "open";
       console.log("WhatsApp client is ready!");
       return;
@@ -98,7 +102,23 @@ app.get("/health", (_req: Request, res: Response) => {
   res.status(connectionState === "open" ? 200 : 503).json({
     service: "whatsapp-service-baileys",
     whatsapp: connectionState,
+    pairingRequired: pairingQr !== null,
   });
+});
+
+app.get("/pairing-qr", async (_req: Request, res: Response) => {
+  if (!pairingQr) {
+    res.status(204).end();
+    return;
+  }
+  try {
+    const image = await QRCode.toBuffer(pairingQr, { type: "png", width: 320, margin: 2 });
+    res.setHeader("Cache-Control", "no-store");
+    res.type("png").send(image);
+  } catch (error) {
+    console.error("Failed to render pairing QR:", error);
+    res.status(500).json({ error: "Could not render pairing QR" });
+  }
 });
 
 app.post("/send-message", async (req: Request, res: Response) => {
@@ -147,8 +167,8 @@ app.post("/send-message", async (req: Request, res: Response) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`HTTP server is running on port ${PORT}`);
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`HTTP server is running on http://127.0.0.1:${PORT}`);
   startWhatsApp().catch((error) => {
     console.error("Failed to initialize WhatsApp:", error);
     connectionState = "closed";
